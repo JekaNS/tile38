@@ -34,6 +34,7 @@ type roamSwitches struct {
 	id      string
 	pattern bool
 	meters  float64
+	minCount uint64
 	scan    string
 }
 
@@ -79,7 +80,7 @@ func (c *Controller) cmdSearchArgs(cmd string, vs []resp.Value, types []string) 
 			break
 		}
 	}
-	if !found && s.searchScanBaseTokens.fence && ltyp == "roam" && cmd == "nearby" {
+	if !found && s.searchScanBaseTokens.fence && (ltyp == "roam" || ltyp == "roamin") && cmd == "nearby" {
 		// allow roaming for nearby fence searches.
 		found = true
 	}
@@ -286,7 +287,7 @@ func (c *Controller) cmdSearchArgs(cmd string, vs []resp.Value, types []string) 
 		} else {
 			s.o = o
 		}
-	case "roam":
+	case "roam", "roamin":
 		s.roam.on = true
 		if vs, s.roam.key, ok = tokenval(vs); !ok || s.roam.key == "" {
 			err = errInvalidNumberOfArguments
@@ -306,20 +307,32 @@ func (c *Controller) cmdSearchArgs(cmd string, vs []resp.Value, types []string) 
 			err = errInvalidArgument(smeters)
 			return
 		}
-
-		var scan string
-		if vs, scan, ok = tokenval(vs); ok {
-			if strings.ToLower(scan) != "scan" {
-				err = errInvalidArgument(scan)
-				return
-			}
-			if vs, scan, ok = tokenval(vs); !ok || scan == "" {
+		if ltyp == "roamin" {
+			var scount string
+			if vs, scount, ok = tokenval(vs); !ok || scount == "" {
 				err = errInvalidNumberOfArguments
 				return
 			}
-			s.roam.scan = scan
+			if s.roam.minCount, err = strconv.ParseUint(scount, 10,64); err != nil {
+				err = errInvalidArgument(smeters)
+				return
+			}
+		} else {
+			var scan string
+			if vs, scan, ok = tokenval(vs); ok {
+				if strings.ToLower(scan) != "scan" {
+					err = errInvalidArgument(scan)
+					return
+				}
+				if vs, scan, ok = tokenval(vs); !ok || scan == "" {
+					err = errInvalidNumberOfArguments
+					return
+				}
+				s.roam.scan = scan
+			}
 		}
 	}
+
 	if len(vs) != 0 {
 		err = errInvalidNumberOfArguments
 		return

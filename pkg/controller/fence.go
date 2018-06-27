@@ -90,9 +90,10 @@ func fenceMatch(hookName string, sw *scanWriter, fence *liveFenceSwitches, metas
 			if details.command == "set" {
 				roamkeys, roamids, roammeters = fenceMatchRoam(sw.c, fence, details.key, details.id, details.obj)
 			}
-			if len(roamids) == 0 || len(roamids) != len(roamkeys) {
+			if len(roamids) == 0 || len(roamids) != len(roamkeys) || (fence.roam.minCount > 0 && (int(fence.roam.minCount)-1) > len(roamids)) {
 				return nil
 			}
+
 			detect = "roam"
 		} else {
 			// not using roaming
@@ -225,56 +226,81 @@ func fenceMatch(hookName string, sw *scanWriter, fence *liveFenceSwitches, metas
 		}
 	case "roam":
 		if len(msgs) > 0 {
-			var nmsgs [][]byte
-			msg := msgs[0][:len(msgs[0])-1]
-			for i, id := range roamids {
 
+			//ROAMIN "nearby" as list. SCAN disabled
+			if fence.roam.minCount > 0 {
+				var nmsgs [][]byte
+				msg := msgs[0][:len(msgs[0])-1]
 				nmsg := append([]byte(nil), msg...)
-				nmsg = append(nmsg, `,"nearby":{"key":`...)
-				nmsg = appendJSONString(nmsg, roamkeys[i])
-				nmsg = append(nmsg, `,"id":`...)
-				nmsg = appendJSONString(nmsg, id)
-				nmsg = append(nmsg, `,"meters":`...)
-				nmsg = append(nmsg, strconv.FormatFloat(roammeters[i], 'f', -1, 64)...)
-
-				if fence.roam.scan != "" {
-					nmsg = append(nmsg, `,"scan":[`...)
-
-					func() {
-						sw.c.mu.Lock()
-						defer sw.c.mu.Unlock()
-						col := sw.c.getCol(roamkeys[i])
-						if col != nil {
-							obj, _, ok := col.Get(id)
-							if ok {
-								nmsg = append(nmsg, `{"id":`+jsonString(id)+`,"self":true,"object":`+obj.JSON()+`}`...)
-							}
-							pattern := id + fence.roam.scan
-							iterator := func(oid string, o geojson.Object, fields []float64) bool {
-								if oid == id {
-									return true
-								}
-								if matched, _ := glob.Match(pattern, oid); matched {
-									nmsg = append(nmsg, `,{"id":`+jsonString(oid)+`,"object":`+o.JSON()+`}`...)
-								}
-								return true
-							}
-							g := glob.Parse(pattern, false)
-							if g.Limits[0] == "" && g.Limits[1] == "" {
-								col.Scan(false, iterator)
-							} else {
-								col.ScanRange(g.Limits[0], g.Limits[1], false, iterator)
-							}
-						}
-					}()
-					nmsg = append(nmsg, ']')
+				nmsg = append(nmsg,`,"nearby":[`...)
+				for i, id := range roamids {
+					if(i > 0) {
+						nmsg = append(nmsg,',')
+					}
+					nmsg = append(nmsg,`{"key":`...)
+					nmsg = appendJSONString(nmsg, roamkeys[i])
+					nmsg = append(nmsg, `,"id":`...)
+					nmsg = appendJSONString(nmsg, id)
+					nmsg = append(nmsg, `,"meters":`...)
+					nmsg = append(nmsg, strconv.FormatFloat(roammeters[i], 'f', -1, 64)...)
+					nmsg = append(nmsg, '}')
 				}
-
-				nmsg = append(nmsg, '}')
+				nmsg = append(nmsg, ']')
 				nmsg = append(nmsg, '}')
 				nmsgs = append(nmsgs, nmsg)
+				msgs = nmsgs
+			} else {
+				var nmsgs [][]byte
+				msg := msgs[0][:len(msgs[0])-1]
+				for i, id := range roamids {
+
+					nmsg := append([]byte(nil), msg...)
+					nmsg = append(nmsg, `,"nearby":{"key":`...)
+					nmsg = appendJSONString(nmsg, roamkeys[i])
+					nmsg = append(nmsg, `,"id":`...)
+					nmsg = appendJSONString(nmsg, id)
+					nmsg = append(nmsg, `,"meters":`...)
+					nmsg = append(nmsg, strconv.FormatFloat(roammeters[i], 'f', -1, 64)...)
+
+					if fence.roam.scan != "" {
+						nmsg = append(nmsg, `,"scan":[`...)
+
+						func() {
+							sw.c.mu.Lock()
+							defer sw.c.mu.Unlock()
+							col := sw.c.getCol(roamkeys[i])
+							if col != nil {
+								obj, _, ok := col.Get(id)
+								if ok {
+									nmsg = append(nmsg, `{"id":`+jsonString(id)+`,"self":true,"object":`+obj.JSON()+`}`...)
+								}
+								pattern := id + fence.roam.scan
+								iterator := func(oid string, o geojson.Object, fields []float64) bool {
+									if oid == id {
+										return true
+									}
+									if matched, _ := glob.Match(pattern, oid); matched {
+										nmsg = append(nmsg, `,{"id":`+jsonString(oid)+`,"object":`+o.JSON()+`}`...)
+									}
+									return true
+								}
+								g := glob.Parse(pattern, false)
+								if g.Limits[0] == "" && g.Limits[1] == "" {
+									col.Scan(false, iterator)
+								} else {
+									col.ScanRange(g.Limits[0], g.Limits[1], false, iterator)
+								}
+							}
+						}()
+						nmsg = append(nmsg, ']')
+					}
+
+					nmsg = append(nmsg, '}')
+					nmsg = append(nmsg, '}')
+					nmsgs = append(nmsgs, nmsg)
+				}
+				msgs = nmsgs
 			}
-			msgs = nmsgs
 		}
 	}
 	return msgs

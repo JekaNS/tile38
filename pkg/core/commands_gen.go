@@ -832,6 +832,27 @@ var commandsJSON = `{
                 "type": "double"
               }
             ]
+          },
+          {
+            "name": "ROAMIN",
+            "arguments":[
+              {
+                "name": "key",
+                "type": "string"
+              },
+              {
+                "name": "pattern",
+                "type": "pattern"
+              },
+              {
+                "name": "meters",
+                "type": "double"
+              },
+              {
+                "name": "mincount",
+                "type": "integer"
+              }
+            ]
           }
         ]
       }
